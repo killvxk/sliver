@@ -23,6 +23,7 @@ message Register {
   int32 Pid = 8;
   string Filename = 9;
   string ActiveC2 = 10;
+  string Version = 11;
 }
 
 message Ping { int32 Nonce = 1; }
@@ -54,6 +55,19 @@ message Process {
   string Executable = 3;
   string Owner = 4;
 }
+
+message NetInterface {
+  int32 Index = 1;
+  string Name = 2;
+  string MAC = 3;
+  repeated string IPAddresses = 4;
+}
+
+message IfconfigReq { 
+  uint32 SliverID = 9;
+}
+
+message Ifconfig { repeated NetInterface NetInterfaces = 1; }
 
 message LsReq {
   string Path = 1;
@@ -202,6 +216,19 @@ message Migrate {
   bool Success = 1;
   string Err = 2;
 }
+
+message ExecuteReq {
+  string Path = 1;
+  repeated string Args = 2;
+  bool output = 3;
+  uint32 SliverID = 9;
+}
+
+message Execute {
+  string Error = 1;
+  string Result = 2;
+}
+
 // DNS Specific messages
 message DNSSessionInit { bytes Key = 1; }
 

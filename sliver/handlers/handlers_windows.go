@@ -52,6 +52,8 @@ var (
 		pb.MsgPwdReq:      pwdHandler,
 		pb.MsgRmReq:       rmHandler,
 		pb.MsgMkdirReq:    mkdirHandler,
+		pb.MsgIfconfigReq: ifconfigHandler,
+		pb.MsgExecuteReq:  executeHandler,
 	}
 )
 
