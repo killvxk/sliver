@@ -19,122 +19,120 @@ package rpc
 */
 
 import (
-	"time"
+	"context"
+	"crypto/sha256"
+	"fmt"
 
-	sliverpb "github.com/bishopfox/sliver/protobuf/sliver"
+	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/server/core"
-
-	"github.com/golang/protobuf/proto"
+	"github.com/bishopfox/sliver/server/db"
+	"github.com/bishopfox/sliver/server/db/models"
+	"github.com/bishopfox/sliver/server/log"
 )
 
-func rpcLs(req []byte, timeout time.Duration, resp RPCResponse) {
-	dirList := &sliverpb.LsReq{}
-	err := proto.Unmarshal(req, dirList)
-	if err != nil {
-		resp([]byte{}, err)
-		return
-	}
-	sliver := core.Hive.Sliver(dirList.SliverID)
+var (
+	fsLog = log.NamedLogger("rcp", "fs")
+)
 
-	data, _ := proto.Marshal(&sliverpb.LsReq{
-		Path: dirList.Path,
-	})
-	data, err = sliver.Request(sliverpb.MsgLsReq, timeout, data)
-	resp(data, err)
+// Ls - List a directory
+func (rpc *Server) Ls(ctx context.Context, req *sliverpb.LsReq) (*sliverpb.Ls, error) {
+	resp := &sliverpb.Ls{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
-func rpcRm(req []byte, timeout time.Duration, resp RPCResponse) {
-	rmReq := &sliverpb.RmReq{}
-	err := proto.Unmarshal(req, rmReq)
+// Rm - Remove file or directory
+func (rpc *Server) Rm(ctx context.Context, req *sliverpb.RmReq) (*sliverpb.Rm, error) {
+	resp := &sliverpb.Rm{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
-		return
+		return nil, err
 	}
-	sliver := core.Hive.Sliver(rmReq.SliverID)
-
-	data, _ := proto.Marshal(&sliverpb.RmReq{
-		Path: rmReq.Path,
-	})
-	data, err = sliver.Request(sliverpb.MsgRmReq, timeout, data)
-	resp(data, err)
+	return resp, nil
 }
 
-func rpcMkdir(req []byte, timeout time.Duration, resp RPCResponse) {
-	mkdirReq := &sliverpb.MkdirReq{}
-	err := proto.Unmarshal(req, mkdirReq)
+// Mkdir - Make a directory
+func (rpc *Server) Mkdir(ctx context.Context, req *sliverpb.MkdirReq) (*sliverpb.Mkdir, error) {
+	resp := &sliverpb.Mkdir{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
-		return
+		return nil, err
 	}
-	sliver := core.Hive.Sliver(mkdirReq.SliverID)
-
-	data, _ := proto.Marshal(&sliverpb.MkdirReq{
-		Path: mkdirReq.Path,
-	})
-	data, err = sliver.Request(sliverpb.MsgMkdirReq, timeout, data)
-	resp(data, err)
+	return resp, nil
 }
 
-func rpcCd(req []byte, timeout time.Duration, resp RPCResponse) {
-	cdReq := &sliverpb.CdReq{}
-	err := proto.Unmarshal(req, cdReq)
+// Cd - Change directory
+func (rpc *Server) Cd(ctx context.Context, req *sliverpb.CdReq) (*sliverpb.Pwd, error) {
+	resp := &sliverpb.Pwd{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
-		return
+		return nil, err
 	}
-	sliver := core.Hive.Sliver(cdReq.SliverID)
-
-	data, _ := proto.Marshal(&sliverpb.CdReq{
-		Path: cdReq.Path,
-	})
-	data, err = sliver.Request(sliverpb.MsgCdReq, timeout, data)
-	resp(data, err)
+	return resp, nil
 }
 
-func rpcPwd(req []byte, timeout time.Duration, resp RPCResponse) {
-	pwdReq := &sliverpb.PwdReq{}
-	err := proto.Unmarshal(req, pwdReq)
+// Pwd - Change directory
+func (rpc *Server) Pwd(ctx context.Context, req *sliverpb.PwdReq) (*sliverpb.Pwd, error) {
+	resp := &sliverpb.Pwd{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
-		return
+		return nil, err
 	}
-	sliver := (*core.Hive.Slivers)[pwdReq.SliverID]
-
-	data, _ := proto.Marshal(&sliverpb.PwdReq{})
-	data, err = sliver.Request(sliverpb.MsgPwdReq, timeout, data)
-	resp(data, err)
+	return resp, nil
 }
 
-func rpcDownload(req []byte, timeout time.Duration, resp RPCResponse) {
-	downloadReq := &sliverpb.DownloadReq{}
-	err := proto.Unmarshal(req, downloadReq)
+// Download - Download a file from the remote file system
+func (rpc *Server) Download(ctx context.Context, req *sliverpb.DownloadReq) (*sliverpb.Download, error) {
+	resp := &sliverpb.Download{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
-		return
+		return nil, err
 	}
-	sliver := core.Hive.Sliver(downloadReq.SliverID)
-
-	data, _ := proto.Marshal(&sliverpb.DownloadReq{
-		Path: downloadReq.Path,
-	})
-	data, err = sliver.Request(sliverpb.MsgDownloadReq, timeout, data)
-	resp(data, err)
+	return resp, nil
 }
 
-func rpcUpload(req []byte, timeout time.Duration, resp RPCResponse) {
-	uploadReq := &sliverpb.UploadReq{}
-	err := proto.Unmarshal(req, uploadReq)
+// Upload - Upload a file from the remote file system
+func (rpc *Server) Upload(ctx context.Context, req *sliverpb.UploadReq) (*sliverpb.Upload, error) {
+	resp := &sliverpb.Upload{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
 	if err != nil {
-		resp([]byte{}, err)
+		return nil, err
+	}
+	if req.IsIOC {
+		go trackIOC(req, resp)
+	}
+	return resp, nil
+}
+
+func trackIOC(req *sliverpb.UploadReq, resp *sliverpb.Upload) {
+	fsLog.Debugf("Adding IOC to database ...")
+	request := req.GetRequest()
+	if request == nil {
+		fsLog.Error("No request for upload")
 		return
 	}
-	sliver := core.Hive.Sliver(uploadReq.SliverID)
+	session := core.Sessions.Get(request.SessionID)
+	if session == nil {
+		fsLog.Error("No session for upload request")
+		return
+	}
+	host, err := db.HostByHostUUID(session.UUID)
+	if err != nil {
+		fsLog.Errorf("No host for session uuid %v", session.UUID)
+		return
+	}
 
-	data, _ := proto.Marshal(&sliverpb.UploadReq{
-		Encoder: uploadReq.Encoder,
-		Path:    uploadReq.Path,
-		Data:    uploadReq.Data,
-	})
-	data, err = sliver.Request(sliverpb.MsgUploadReq, timeout, data)
-	resp(data, err)
+	sum := sha256.Sum256(req.Data)
+	ioc := &models.IOC{
+		HostID:   host.ID,
+		Path:     resp.Path,
+		FileHash: fmt.Sprintf("%x", sum),
+	}
+	if db.Session().Create(ioc).Error != nil {
+		fsLog.Error("Failed to create IOC")
+	}
 }

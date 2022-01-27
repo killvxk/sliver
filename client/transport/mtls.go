@@ -19,147 +19,67 @@ package transport
 */
 
 import (
-	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/bishopfox/sliver/client/assets"
-	pb "github.com/bishopfox/sliver/protobuf/sliver"
-
-	"github.com/golang/protobuf/proto"
+	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 const (
-	readBufSize = 1024
+	kb = 1024
+	mb = kb * 1024
+	gb = mb * 1024
+
+	// ClientMaxReceiveMessageSize - Max gRPC message size ~2Gb
+	ClientMaxReceiveMessageSize = 2 * gb
+
+	defaultTimeout = time.Duration(10 * time.Second)
 )
 
-var (
-	once = &sync.Once{}
-)
+type TokenAuth struct {
+	token string
+}
+
+// Return value is mapped to request headers.
+func (t TokenAuth) GetRequestMetadata(ctx context.Context, in ...string) (map[string]string, error) {
+	return map[string]string{
+		"Authorization": "Bearer " + t.token,
+	}, nil
+}
+
+func (TokenAuth) RequireTransportSecurity() bool {
+	return true
+}
 
 // MTLSConnect - Connect to the sliver server
-func MTLSConnect(config *assets.ClientConfig) (chan *pb.Envelope, chan *pb.Envelope, error) {
-	conn, err := tlsConnect(config.LHost, uint16(config.LPort), config)
+func MTLSConnect(config *assets.ClientConfig) (rpcpb.SliverRPCClient, *grpc.ClientConn, error) {
+	tlsConfig, err := getTLSConfig(config.CACertificate, config.Certificate, config.PrivateKey)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	send := make(chan *pb.Envelope)
-	recv := make(chan *pb.Envelope)
-
-	go func() {
-		defer once.Do(func() {
-			close(send)
-			close(recv)
-			conn.Close()
-		})
-
-		for envelope := range send {
-			err := socketWriteEnvelope(conn, envelope)
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer once.Do(func() {
-			close(send)
-			close(recv)
-			conn.Close()
-		})
-		for {
-			envelope, err := socketReadEnvelope(conn)
-			if err == io.EOF {
-				log.Printf("Lost connection to server")
-				return
-			}
-			if envelope == nil {
-				log.Printf("Warning: nil envelope")
-				continue
-			}
-			if err == nil && envelope != nil {
-				recv <- envelope
-			}
-		}
-	}()
-
-	return send, recv, nil
-}
-
-// socketWriteEnvelope - Writes a message to the TLS socket using length prefix framing
-// which is a fancy way of saying we write the length of the message then the message
-// e.g. [uint32 length|message] so the reciever can delimit messages properly
-func socketWriteEnvelope(connection *tls.Conn, envelope *pb.Envelope) error {
-	data, err := proto.Marshal(envelope)
+	transportCreds := credentials.NewTLS(tlsConfig)
+	callCreds := credentials.PerRPCCredentials(TokenAuth{token: config.Token})
+	options := []grpc.DialOption{
+		grpc.WithTransportCredentials(transportCreds),
+		grpc.WithPerRPCCredentials(callCreds),
+		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(ClientMaxReceiveMessageSize)),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	connection, err := grpc.DialContext(ctx, fmt.Sprintf("%s:%d", config.LHost, config.LPort), options...)
 	if err != nil {
-		log.Print("Envelope marshaling error: ", err)
-		return err
+		return nil, nil, err
 	}
-	dataLengthBuf := new(bytes.Buffer)
-	binary.Write(dataLengthBuf, binary.LittleEndian, uint32(len(data)))
-	connection.Write(dataLengthBuf.Bytes())
-	connection.Write(data)
-	return nil
-}
-
-// socketReadEnvelope - Reads a message from the TLS connection using length prefix framing
-func socketReadEnvelope(connection *tls.Conn) (*pb.Envelope, error) {
-	dataLengthBuf := make([]byte, 4) // Size of uint32
-
-	_, err := connection.Read(dataLengthBuf)
-	if err != nil {
-		log.Printf("Socket error (read msg-length): %v\n", err)
-		return nil, err
-	}
-	dataLength := int(binary.LittleEndian.Uint32(dataLengthBuf))
-
-	// Read the length of the data
-	readBuf := make([]byte, readBufSize)
-	dataBuf := make([]byte, 0)
-	totalRead := 0
-	for {
-		n, err := connection.Read(readBuf)
-		dataBuf = append(dataBuf, readBuf[:n]...)
-		totalRead += n
-		if totalRead == dataLength {
-			break
-		}
-		if err != nil {
-			log.Printf("Read error: %s\n", err)
-			break
-		}
-	}
-
-	// Unmarshal the protobuf envelope
-	envelope := &pb.Envelope{}
-	err = proto.Unmarshal(dataBuf, envelope)
-	if err != nil {
-		log.Printf("Unmarshaling envelope error: %v", err)
-		return &pb.Envelope{}, err
-	}
-
-	return envelope, nil
-}
-
-// tlsConnect - Get a TLS connection or die trying
-func tlsConnect(address string, port uint16, config *assets.ClientConfig) (*tls.Conn, error) {
-	tlsConfig, err := getTLSConfig(config.CACertificate, config.Certificate, config.PrivateKey)
-	if err != nil {
-		return nil, err
-	}
-	connection, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", address, port), tlsConfig)
-	if err != nil {
-		log.Printf("Unable to connect: %v", err)
-		return nil, err
-	}
-	return connection, nil
+	return rpcpb.NewSliverRPCClient(connection), connection, nil
 }
 
 func getTLSConfig(caCertificate string, certificate string, privateKey string) (*tls.Config, error) {
@@ -180,19 +100,16 @@ func getTLSConfig(caCertificate string, certificate string, privateKey string) (
 		RootCAs:            caCertPool,
 		InsecureSkipVerify: true, // Don't worry I sorta know what I'm doing
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			return rootOnlyVerifyCertificate(caCertificate, rawCerts)
+			return RootOnlyVerifyCertificate(caCertificate, rawCerts)
 		},
 	}
-	tlsConfig.BuildNameToCertificate()
-
 	return tlsConfig, nil
 }
 
-// rootOnlyVerifyCertificate - Go doesn't provide a method for only skipping hostname validation so
-// we have to disable all of the fucking certificate validation and re-implement everything.
+// RootOnlyVerifyCertificate - Go doesn't provide a method for only skipping hostname validation so
+// we have to disable all of the certificate validation and re-implement everything.
 // https://github.com/golang/go/issues/21971
-func rootOnlyVerifyCertificate(caCertificate string, rawCerts [][]byte) error {
-
+func RootOnlyVerifyCertificate(caCertificate string, rawCerts [][]byte) error {
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(caCertificate))
 	if !ok {
@@ -211,6 +128,9 @@ func rootOnlyVerifyCertificate(caCertificate string, rawCerts [][]byte) error {
 	// skipping the hostname check, I think?
 	options := x509.VerifyOptions{
 		Roots: roots,
+	}
+	if options.Roots == nil {
+		panic("no root certificate")
 	}
 	if _, err := cert.Verify(options); err != nil {
 		log.Printf("Failed to verify certificate: " + err.Error())

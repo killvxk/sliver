@@ -19,6 +19,7 @@ package assets
 */
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,7 @@ type ClientConfig struct {
 	Operator      string `json:"operator"` // This value is actually ignored for the most part (cert CN is used instead)
 	LHost         string `json:"lhost"`
 	LPort         int    `json:"lport"`
+	Token         string `json:"token"`
 	CACertificate string `json:"ca_certificate"`
 	PrivateKey    string `json:"private_key"`
 	Certificate   string `json:"certificate"`
@@ -47,9 +49,9 @@ type ClientConfig struct {
 // GetConfigDir - Returns the path to the config dir
 func GetConfigDir() string {
 	rootDir, _ := filepath.Abs(GetRootAppDir())
-	dir := path.Join(rootDir, ConfigDirName)
+	dir := filepath.Join(rootDir, ConfigDirName)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, os.ModePerm)
+		err = os.MkdirAll(dir, 0700)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -75,7 +77,8 @@ func GetConfigs() map[string]*ClientConfig {
 		if err != nil {
 			continue
 		}
-		confs[conf.LHost] = conf
+		digest := sha256.Sum256([]byte(conf.Certificate))
+		confs[fmt.Sprintf("%s@%s (%x)", conf.Operator, conf.LHost, digest[:8])] = conf
 	}
 	return confs
 }
@@ -83,11 +86,11 @@ func GetConfigs() map[string]*ClientConfig {
 // ReadConfig - Load config into struct
 func ReadConfig(confFilePath string) (*ClientConfig, error) {
 	confFile, err := os.Open(confFilePath)
-	defer confFile.Close()
 	if err != nil {
 		log.Printf("Open failed %v", err)
 		return nil, err
 	}
+	defer confFile.Close()
 	data, err := ioutil.ReadAll(confFile)
 	if err != nil {
 		log.Printf("Read failed %v", err)
@@ -105,11 +108,11 @@ func ReadConfig(confFilePath string) (*ClientConfig, error) {
 // SaveConfig - Save a config to disk
 func SaveConfig(config *ClientConfig) error {
 	if config.LHost == "" || config.Operator == "" {
-		return errors.New("Empty config")
+		return errors.New("empty config")
 	}
 	configDir := GetConfigDir()
 	filename := fmt.Sprintf("%s_%s.cfg", filepath.Base(config.Operator), filepath.Base(config.LHost))
-	saveTo, _ := filepath.Abs(path.Join(configDir, filename))
+	saveTo, _ := filepath.Abs(filepath.Join(configDir, filename))
 	configJSON, _ := json.Marshal(config)
 	err := ioutil.WriteFile(saveTo, configJSON, 0600)
 	if err != nil {

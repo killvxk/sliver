@@ -19,45 +19,57 @@ package console
 */
 
 import (
+	"context"
 	"fmt"
-	insecureRand "math/rand"
-	"time"
+	"net"
 
 	"github.com/desertbit/grumble"
 
 	"github.com/bishopfox/sliver/client/command"
+	"github.com/bishopfox/sliver/client/command/help"
 	clientconsole "github.com/bishopfox/sliver/client/console"
 	consts "github.com/bishopfox/sliver/client/constants"
-	clientcore "github.com/bishopfox/sliver/client/core"
-	"github.com/bishopfox/sliver/client/help"
-	sliverpb "github.com/bishopfox/sliver/protobuf/sliver"
+	clienttransport "github.com/bishopfox/sliver/client/transport"
+	"github.com/bishopfox/sliver/protobuf/rpcpb"
 	"github.com/bishopfox/sliver/server/transport"
+	"google.golang.org/grpc"
 )
 
 // Start - Starts the server console
 func Start() {
-	send := make(chan *sliverpb.Envelope) // To "server"
-	recv := make(chan *sliverpb.Envelope) // From "server"
+	_, ln, _ := transport.LocalListener()
+	ctxDialer := grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return ln.Dial()
+	})
 
-	transport.LocalClientConnect(send, recv) // Simulates a client connection
-
-	server := clientcore.BindSliverServer(send, recv)
-	go server.ResponseMapper()
-	clientconsole.Start(server, serverOnlyCmds)
+	options := []grpc.DialOption{
+		ctxDialer,
+		grpc.WithInsecure(), // This is an in-memory listener, no need for secure transport
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(clienttransport.ClientMaxReceiveMessageSize)),
+	}
+	conn, err := grpc.DialContext(context.Background(), "bufnet", options...)
+	if err != nil {
+		fmt.Printf(Warn+"Failed to dial bufnet: %s", err)
+		return
+	}
+	defer conn.Close()
+	localRPC := rpcpb.NewSliverRPCClient(conn)
+	clientconsole.Start(localRPC, command.BindCommands, serverOnlyCmds, true)
 }
 
 // ServerOnlyCmds - Server only commands
-func serverOnlyCmds(app *grumble.App, server *clientcore.SliverServer) {
+func serverOnlyCmds(console *clientconsole.SliverConsoleClient) {
 
 	// [ Multiplayer ] -----------------------------------------------------------------
 
-	app.AddCommand(&grumble.Command{
+	console.App.AddCommand(&grumble.Command{
 		Name:     consts.MultiplayerModeStr,
 		Help:     "Enable multiplayer mode",
-		LongHelp: help.GetHelpFor(consts.MultiplayerModeStr),
+		LongHelp: help.GetHelpFor([]string{consts.MultiplayerModeStr}),
 		Flags: func(f *grumble.Flags) {
-			f.String("s", "server", "", "interface to bind server to")
+			f.String("L", "lhost", "", "interface to bind server to")
 			f.Int("l", "lport", 31337, "tcp listen port")
+			f.Bool("p", "persistent", false, "make persistent across restarts")
 		},
 		Run: func(ctx *grumble.Context) error {
 			fmt.Println()
@@ -68,115 +80,38 @@ func serverOnlyCmds(app *grumble.App, server *clientcore.SliverServer) {
 		HelpGroup: consts.MultiplayerHelpGroup,
 	})
 
-	app.AddCommand(&grumble.Command{
-		Name:     consts.NewPlayerStr,
-		Help:     "Create a new player config file",
-		LongHelp: help.GetHelpFor(consts.NewPlayerStr),
+	console.App.AddCommand(&grumble.Command{
+		Name:     consts.NewOperatorStr,
+		Help:     "Create a new operator config file",
+		LongHelp: help.GetHelpFor([]string{consts.NewOperatorStr}),
 		Flags: func(f *grumble.Flags) {
-			f.String("h", "lhost", "", "listen host")
-			f.Int("l", "lport", 31337, "listen port")
+			f.String("l", "lhost", "", "listen host")
+			f.Int("p", "lport", 31337, "listen port")
 			f.String("s", "save", "", "directory/file to the binary to")
-			f.String("n", "operator", "", "operator name")
+			f.String("n", "name", "", "operator name")
 		},
 		Run: func(ctx *grumble.Context) error {
 			fmt.Println()
-			newPlayerCmd(ctx)
+			newOperatorCmd(ctx)
 			fmt.Println()
 			return nil
 		},
 		HelpGroup: consts.MultiplayerHelpGroup,
 	})
 
-	app.AddCommand(&grumble.Command{
-		Name:     consts.KickPlayerStr,
-		Help:     "Kick a player from the server",
-		LongHelp: help.GetHelpFor(consts.KickPlayerStr),
+	console.App.AddCommand(&grumble.Command{
+		Name:     consts.KickOperatorStr,
+		Help:     "Kick an operator from the server",
+		LongHelp: help.GetHelpFor([]string{consts.KickOperatorStr}),
 		Flags: func(f *grumble.Flags) {
-			f.String("o", "operator", "", "operator name")
+			f.String("n", "name", "", "operator name")
 		},
 		Run: func(ctx *grumble.Context) error {
 			fmt.Println()
-			kickPlayerCmd(ctx)
+			kickOperatorCmd(ctx)
 			fmt.Println()
 			return nil
 		},
 		HelpGroup: consts.MultiplayerHelpGroup,
 	})
-
-}
-
-func getPrompt() string {
-	prompt := underline + "sliver" + normal
-	if command.ActiveSliver.Sliver != nil {
-		prompt += fmt.Sprintf(bold+red+" (%s)%s", command.ActiveSliver.Sliver.Name, normal)
-	}
-	prompt += " > "
-	return prompt
-}
-
-func printLogo(app *grumble.App) {
-	insecureRand.Seed(time.Now().Unix())
-	logo := asciiLogos[insecureRand.Intn(len(asciiLogos))]
-	fmt.Println(logo)
-	fmt.Println("All hackers gain " + abilities[insecureRand.Intn(len(abilities))])
-	fmt.Println(Info + "Welcome to the sliver server shell, please type 'help' for options")
-	fmt.Println()
-}
-
-var abilities = []string{
-	"first strike",
-	"vigilance",
-	"haste",
-	"indestructible",
-	"hexproof",
-	"deathtouch",
-	"fear",
-	"epic",
-	"ninjitsu",
-	"recover",
-	"persist",
-	"conspire",
-	"reinforce",
-	"exalted",
-	"annihilator",
-	"infect",
-	"undying",
-	"living weapon",
-	"miracle",
-	"scavenge",
-	"cipher",
-	"evolve",
-	"dethrone",
-	"hidden agenda",
-	"prowess",
-	"dash",
-	"exploit",
-	"renown",
-	"skulk",
-	"improvise",
-	"assist",
-	"jump-start",
-}
-
-var asciiLogos = []string{
-	red + `
- 	  ██████  ██▓     ██▓ ██▒   █▓▓█████  ██▀███
-	▒██    ▒ ▓██▒    ▓██▒▓██░   █▒▓█   ▀ ▓██ ▒ ██▒
-	░ ▓██▄   ▒██░    ▒██▒ ▓██  █▒░▒███   ▓██ ░▄█ ▒
-	  ▒   ██▒▒██░    ░██░  ▒██ █░░▒▓█  ▄ ▒██▀▀█▄
-	▒██████▒▒░██████▒░██░   ▒▀█░  ░▒████▒░██▓ ▒██▒
-	▒ ▒▓▒ ▒ ░░ ▒░▓  ░░▓     ░ ▐░  ░░ ▒░ ░░ ▒▓ ░▒▓░
-	░ ░▒  ░ ░░ ░ ▒  ░ ▒ ░   ░ ░░   ░ ░  ░  ░▒ ░ ▒░
-	░  ░  ░    ░ ░    ▒ ░     ░░     ░     ░░   ░
-		  ░      ░  ░ ░        ░     ░  ░   ░
-` + normal,
-
-	green + `
-    ███████╗██╗     ██╗██╗   ██╗███████╗██████╗
-    ██╔════╝██║     ██║██║   ██║██╔════╝██╔══██╗
-    ███████╗██║     ██║██║   ██║█████╗  ██████╔╝
-    ╚════██║██║     ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗
-    ███████║███████╗██║ ╚████╔╝ ███████╗██║  ██║
-    ╚══════╝╚══════╝╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
-` + normal,
 }

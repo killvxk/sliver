@@ -21,82 +21,101 @@ package core
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"sync"
 
-	sliverpb "github.com/bishopfox/sliver/protobuf/sliver"
-
-	"github.com/golang/protobuf/proto"
+	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
 	// Tunnels - Interating with duplex tunnels
 	Tunnels = tunnels{
-		tunnels: &map[uint64]*tunnel{},
-		mutex:   &sync.RWMutex{},
+		tunnels: map[uint64]*Tunnel{},
+		mutex:   &sync.Mutex{},
 	}
+
+	// ErrInvalidTunnelID - Invalid tunnel ID value
+	ErrInvalidTunnelID = errors.New("invalid tunnel ID")
 )
 
-type tunnels struct {
-	tunnels *map[uint64]*tunnel
-	mutex   *sync.RWMutex
-}
-
-func (t *tunnels) CreateTunnel(client *Client, sliverID uint32) *tunnel {
-	tunID := newTunnelID()
-	sliver := Hive.Sliver(sliverID)
-	tun := &tunnel{
-		ID:     tunID,
-		Client: client,
-		Sliver: sliver,
-	}
-
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
-	(*t.tunnels)[tun.ID] = tun
-
-	return tun
-}
-
-func (t *tunnels) CloseTunnel(tunnelID uint64, reason string) bool {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
-	tunnel := (*t.tunnels)[tunnelID]
-	if tunnel != nil {
-		tunnelClose, _ := proto.Marshal(&sliverpb.TunnelClose{
-			TunnelID: tunnelID,
-			Err:      reason,
-		})
-		tunnel.Client.Send <- &sliverpb.Envelope{
-			Type: sliverpb.MsgTunnelClose,
-			Data: tunnelClose,
-		}
-		tunnel.Sliver.Send <- &sliverpb.Envelope{
-			Type: sliverpb.MsgTunnelClose,
-			Data: tunnelClose,
-		}
-		delete(*t.tunnels, tunnelID)
-		return true
-	}
-	return false
-}
-
-func (t *tunnels) Tunnel(tunnelID uint64) *tunnel {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
-	return (*t.tunnels)[tunnelID]
-}
-
-// A tunnel is essentially just a mapping between a specific client and sliver
+// Tunnel  - Essentially just a mapping between a specific client and sliver
 // with an identifier, these tunnels are full duplex. The server doesn't really
 // care what data gets passed back and forth it just facilitates the connection
-type tunnel struct {
-	ID     uint64
-	Sliver *Sliver
-	Client *Client
+type Tunnel struct {
+	ID        uint64
+	SessionID string
+
+	ToImplant         chan []byte
+	ToImplantSequence uint64
+
+	FromImplant         chan *sliverpb.TunnelData
+	FromImplantSequence uint64
+
+	Client rpcpb.SliverRPC_TunnelDataServer
 }
 
-// tunnelID - New 32bit identifier
-func newTunnelID() uint64 {
+type tunnels struct {
+	tunnels map[uint64]*Tunnel
+	mutex   *sync.Mutex
+}
+
+func (t *tunnels) Create(sessionID string) *Tunnel {
+	tunnelID := NewTunnelID()
+	session := Sessions.Get(sessionID)
+	tunnel := &Tunnel{
+		ID:          tunnelID,
+		SessionID:   session.ID,
+		ToImplant:   make(chan []byte),
+		FromImplant: make(chan *sliverpb.TunnelData),
+	}
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	t.tunnels[tunnel.ID] = tunnel
+
+	return tunnel
+}
+
+func (t *tunnels) Close(tunnelID uint64) error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	tunnel := t.tunnels[tunnelID]
+	if tunnel == nil {
+		return ErrInvalidTunnelID
+	}
+	tunnelClose, err := proto.Marshal(&sliverpb.TunnelData{
+		TunnelID:  tunnel.ID,
+		SessionID: tunnel.SessionID,
+		Closed:    true,
+	})
+	if err != nil {
+		return err
+	}
+	data, err := proto.Marshal(&sliverpb.Envelope{
+		Type: sliverpb.MsgTunnelClose,
+		Data: tunnelClose,
+	})
+	if err != nil {
+		return err
+	}
+	tunnel.ToImplant <- data // Send an in-band close to implant
+	delete(t.tunnels, tunnelID)
+	close(tunnel.ToImplant)
+	close(tunnel.FromImplant)
+	return nil
+}
+
+// Get - Get a tunnel
+func (t *tunnels) Get(tunnelID uint64) *Tunnel {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	return t.tunnels[tunnelID]
+}
+
+// NewTunnelID - New 64-bit identifier
+func NewTunnelID() uint64 {
 	randBuf := make([]byte, 8)
 	rand.Read(randBuf)
 	return binary.LittleEndian.Uint64(randBuf)

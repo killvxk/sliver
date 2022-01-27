@@ -21,68 +21,93 @@ package core
 import (
 	"sync"
 
-	pb "github.com/bishopfox/sliver/protobuf/client"
+	consts "github.com/bishopfox/sliver/client/constants"
+	"github.com/bishopfox/sliver/protobuf/clientpb"
 )
 
 var (
 	// Jobs - Holds pointers to all the current jobs
 	Jobs = &jobs{
-		Active: &map[int]*Job{},
-		mutex:  &sync.RWMutex{},
+		// ID -> *Job
+		active: &sync.Map{},
 	}
-	jobID = new(int)
+	jobID = 0
 )
 
 // Job - Manages background jobs
 type Job struct {
-	ID          int
-	Name        string
-	Description string
-	Protocol    string
-	Port        uint16
-	JobCtrl     chan bool
+	ID           int
+	Name         string
+	Description  string
+	Protocol     string
+	Port         uint16
+	Domains      []string
+	JobCtrl      chan bool
+	PersistentID string
 }
 
 // ToProtobuf - Get the protobuf version of the object
-func (j *Job) ToProtobuf() *pb.Job {
-	return &pb.Job{
-		ID:          int32(j.ID),
+func (j *Job) ToProtobuf() *clientpb.Job {
+	return &clientpb.Job{
+		ID:          uint32(j.ID),
 		Name:        j.Name,
 		Description: j.Description,
 		Protocol:    j.Protocol,
-		Port:        int32(j.Port),
+		Port:        uint32(j.Port),
+		Domains:     j.Domains,
 	}
 }
 
-// Jobs - Holds refs to all active jobs
+// jobs - Holds refs to all active jobs
 type jobs struct {
-	Active *map[int]*Job
-	mutex  *sync.RWMutex
+	active *sync.Map
 }
 
-// AddJob - Add a job to the hive (atomically)
-func (j *jobs) AddJob(job *Job) {
-	j.mutex.Lock()
-	defer j.mutex.Unlock()
-	(*j.Active)[job.ID] = job
+// All - Return a list of all jobs
+func (j *jobs) All() []*Job {
+	all := []*Job{}
+	j.active.Range(func(key, value interface{}) bool {
+		all = append(all, value.(*Job))
+		return true
+	})
+	return all
 }
 
-func (j *jobs) RemoveJob(job *Job) {
-	j.mutex.Lock()
-	defer j.mutex.Unlock()
-	delete((*j.Active), job.ID)
+// Add - Add a job to the hive (atomically)
+func (j *jobs) Add(job *Job) {
+	j.active.Store(job.ID, job)
+	EventBroker.Publish(Event{
+		Job:       job,
+		EventType: consts.JobStartedEvent,
+	})
 }
 
-// Job - Get a Job
-func (j *jobs) Job(jobID int) *Job {
-	j.mutex.Lock()
-	defer j.mutex.Unlock()
-	return (*j.Active)[jobID]
+// Remove - Remove a job
+func (j *jobs) Remove(job *Job) {
+	_, ok := j.active.LoadAndDelete(job.ID)
+	if ok {
+		EventBroker.Publish(Event{
+			Job:       job,
+			EventType: consts.JobStoppedEvent,
+		})
+	}
 }
 
-// GetJobID - Returns an incremental nonce as an id
-func GetJobID() int {
-	newID := (*jobID) + 1
-	(*jobID)++
+// Get - Get a Job
+func (j *jobs) Get(jobID int) *Job {
+	if jobID <= 0 {
+		return nil
+	}
+	val, ok := j.active.Load(jobID)
+	if ok {
+		return val.(*Job)
+	}
+	return nil
+}
+
+// NextJobID - Returns an incremental nonce as an id
+func NextJobID() int {
+	newID := jobID + 1
+	jobID++
 	return newID
 }

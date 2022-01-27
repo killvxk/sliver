@@ -19,56 +19,26 @@ package main
 */
 
 import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"path"
+	"crypto/rand"
+	"encoding/binary"
+	insecureRand "math/rand"
+	"time"
 
-	"github.com/bishopfox/sliver/client/version"
-	"github.com/bishopfox/sliver/server/assets"
-	"github.com/bishopfox/sliver/server/certs"
-	"github.com/bishopfox/sliver/server/console"
+	"github.com/bishopfox/sliver/server/cli"
 )
 
-var (
-	sliverServerVersion = fmt.Sprintf("Client v%s\nServer v0.0.7", version.FullVersion())
-)
-
-const (
-	logFileName = "console.log"
-)
-
-func main() {
-	unpack := flag.Bool("unpack", false, "force unpack assets")
-	version := flag.Bool("version", false, "print version number")
-	flag.Parse()
-
-	if *version {
-		fmt.Printf("%s\n", sliverServerVersion)
-		os.Exit(0)
+// Attempt to seed insecure rand with secure rand, but we really
+// don't care that much if it fails since it's insecure anyways
+func init() {
+	buf := make([]byte, 8)
+	_, err := rand.Read(buf)
+	if err != nil {
+		insecureRand.Seed(int64(time.Now().Unix()))
+	} else {
+		insecureRand.Seed(int64(binary.LittleEndian.Uint64(buf)))
 	}
-
-	assets.Setup(*unpack)
-	if *unpack {
-		os.Exit(0)
-	}
-
-	appDir := assets.GetRootAppDir()
-	logFile := initLogging(appDir)
-	defer logFile.Close()
-
-	certs.SetupCAs()
-	console.Start()
 }
 
-// Initialize logging
-func initLogging(appDir string) *os.File {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	logFile, err := os.OpenFile(path.Join(appDir, logFileName), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("Error opening file: %v", err)
-	}
-	log.SetOutput(logFile)
-	return logFile
+func main() {
+	cli.Execute()
 }

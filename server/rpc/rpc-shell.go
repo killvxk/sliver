@@ -19,31 +19,50 @@ package rpc
 */
 
 import (
-	"time"
+	"context"
 
-	sliverpb "github.com/bishopfox/sliver/protobuf/sliver"
+	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/server/core"
-
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
-func rpcShell(req []byte, timeout time.Duration, resp RPCResponse) {
-	shellReq := &sliverpb.ShellReq{}
-	proto.Unmarshal(req, shellReq)
+var (
+	// ErrTunnelInitFailure - Returned when a tunnel cannot be initialized
+	ErrTunnelInitFailure = status.Error(codes.Internal, "Failed to initialize tunnel")
+)
 
-	sliver := core.Hive.Sliver(shellReq.SliverID)
-	tunnel := core.Tunnels.Tunnel(shellReq.TunnelID)
-
-	startShellReq, err := proto.Marshal(&sliverpb.ShellReq{
-		EnablePTY: shellReq.EnablePTY,
-		TunnelID:  tunnel.ID,
-	})
-	if err != nil {
-		resp([]byte{}, err)
-		return
+// Shell - Open an interactive shell
+func (rpc *Server) Shell(ctx context.Context, req *sliverpb.ShellReq) (*sliverpb.Shell, error) {
+	session := core.Sessions.Get(req.Request.SessionID)
+	if session == nil {
+		return nil, ErrInvalidSessionID
 	}
-	rpcLog.Infof("Requesting Sliver %d to start shell", sliver.ID)
-	data, err := sliver.Request(sliverpb.MsgShellReq, timeout, startShellReq)
-	rpcLog.Infof("Sliver %d responded to shell start request", sliver.ID)
-	resp(data, err)
+	tunnel := core.Tunnels.Get(req.TunnelID)
+	if tunnel == nil {
+		return nil, core.ErrInvalidTunnelID
+	}
+	reqData, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	data, err := session.Request(sliverpb.MsgNumber(req), rpc.getTimeout(req), reqData)
+	if err != nil {
+		return nil, err
+	}
+	shell := &sliverpb.Shell{}
+	err = proto.Unmarshal(data, shell)
+	return shell, err
+}
+
+// RunSSHCommand runs a SSH command using the client built into the implant
+func (rpc *Server) RunSSHCommand(ctx context.Context, req *sliverpb.SSHCommandReq) (*sliverpb.SSHCommand, error) {
+	resp := &sliverpb.SSHCommand{Response: &commonpb.Response{}}
+	err := rpc.GenericHandler(req, resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }

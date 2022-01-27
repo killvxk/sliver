@@ -19,27 +19,45 @@ package util
 */
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 )
 
-// CopyFileContents - Copy/overwrite src to dst
-func CopyFileContents(src string, dst string) error {
-	// Calling f.Sync() should be unecessary as long as the
-	// returned err is properly checked. The only reason
-	// this would fail implictly (meaning the file isn't
-	// available to a Stat() called immediately after calling
-	// this function) would be because the kernel or filesystem
-	// is inherently broken.
-	contents, err := ioutil.ReadFile(filepath.Clean(src))
-	if err != nil {
+// GzipBuf - Gzip a buffer
+func GzipBuf(data []byte) []byte {
+	var buf bytes.Buffer
+	zip := gzip.NewWriter(&buf)
+	zip.Write(data)
+	zip.Close()
+	return buf.Bytes()
+}
+
+// GunzipBuf - Gunzip a buffer
+func GunzipBuf(data []byte) []byte {
+	zip, _ := gzip.NewReader(bytes.NewBuffer(data))
+	var buf bytes.Buffer
+	buf.ReadFrom(zip)
+	return buf.Bytes()
+}
+
+// ChmodR - Recursively chmod
+func ChmodR(path string, filePerm, dirPerm os.FileMode) error {
+	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err == nil {
+			if info.IsDir() {
+				err = os.Chmod(name, dirPerm)
+			} else {
+				err = os.Chmod(name, filePerm)
+			}
+		}
 		return err
-	}
-	return ioutil.WriteFile(filepath.Clean(dst), contents, 0775)
+	})
 }
 
 // ByteCountBinary - Pretty print byte size
@@ -56,25 +74,59 @@ func ByteCountBinary(b int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-// Gzip - Gzip compression encoder
-type Gzip struct{}
-
-// Encode - Compress data with gzip
-func (g Gzip) Encode(w io.Writer, data []byte) error {
-	gw, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
-	defer gw.Close()
-	_, err := gw.Write(data)
-	return err
-}
-
-// Decode - Uncompress data with gzip
-func (g Gzip) Decode(data []byte) ([]byte, error) {
-	bytes.NewReader(data)
-	reader, _ := gzip.NewReader(bytes.NewReader(data))
-	var buf bytes.Buffer
-	_, err := buf.ReadFrom(reader)
+// ReadFileFromTarGz - Read a file from a tar.gz file in-memory
+func ReadFileFromTarGz(tarGzFile string, tarPath string) ([]byte, error) {
+	f, err := os.Open(tarGzFile)
 	if err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	defer f.Close()
+	gzf, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	defer gzf.Close()
+
+	tarReader := tar.NewReader(gzf)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if header.Name == tarPath {
+			switch header.Typeflag {
+			case tar.TypeDir: // = directory
+				continue
+			case tar.TypeReg: // = regular file
+				return ioutil.ReadAll(tarReader)
+			}
+		}
+	}
+	return nil, nil
+}
+
+// CopyFile - Copy a file from src to dst
+func CopyFile(src string, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+	err = out.Close()
+	if err != nil {
+		return err
+	}
+	return err
 }

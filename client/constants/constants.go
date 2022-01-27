@@ -20,68 +20,143 @@ package constants
 
 // Meta
 const (
+	// KeepAliveStr - Keep alive constant
 	KeepAliveStr = "keepalive"
+)
+
+const (
+	// LastUpdateCheckFileName - Last update check file name
+	LastUpdateCheckFileName = "last_update_check"
 )
 
 // Events
 const (
+	// UpdateStr - "update"
+	UpdateStr = "update"
+	// VersionStr - "version"
+	VersionStr = "version"
+
+	// EventStr - "event"
 	EventStr = "event"
 
-	ServerErrorStr = "server"
+	// ServersStr - "server-error"
+	ServerErrorStr = "server-error"
 
 	// ConnectedEvent - Sliver Connected
-	ConnectedEvent = "connected"
+	SessionOpenedEvent = "session-connected"
 	// DisconnectedEvent - Sliver disconnected
-	DisconnectedEvent = "disconnected"
+	SessionClosedEvent = "session-disconnected"
+	// UpdateEvent - Sliver updated
+	SessionUpdateEvent = "session-updated"
 
 	// JoinedEvent - Player joined the game
-	JoinedEvent = "joined"
+	JoinedEvent = "client-joined"
 	// LeftEvent - Player left the game
-	LeftEvent = "left"
+	LeftEvent = "client-left"
 
 	// CanaryEvent - A DNS canary was triggered
 	CanaryEvent = "canary"
 
+	// WatchtowerEvent - An implant hash has been identified on a threat intel platform
+	WatchtowerEvent = "watchtower"
+
 	// StartedEvent - Job was started
-	StartedEvent = "started"
+	JobStartedEvent = "job-started"
 	// StoppedEvent - Job was stopped
-	StoppedEvent = "stopped"
+	JobStoppedEvent = "job-stopped"
+
+	// BuildEvent - Fires on change to builds
+	BuildEvent = "build"
+
+	// BuildCompletedEvent - Fires when a build completes
+	BuildCompletedEvent = "build-completed"
+
+	// ProfileEvent - Fires whenever there's a change to profiles
+	ProfileEvent = "profile"
+
+	// WebsiteEvent - Fires whenever there's a change to websites
+	WebsiteEvent = "website"
+
+	// LootAdded
+	LootAddedEvent = "loot-added"
+
+	// LootRemoved
+	LootRemovedEvent = "loot-removed"
+
+	// BeaconRegisteredEvent - First connection from a new beacon
+	BeaconRegisteredEvent = "beacon-registered"
+
+	// BeaconTaskResult - Beacon task completed with a result
+	BeaconTaskResultEvent = "beacon-taskresult"
 )
 
 // Commands
 const (
-	NewPlayerStr       = "new-player"
-	PlayersStr         = "players"
-	KickPlayerStr      = "kick-player"
+	OperatorsStr       = "operators"
+	NewOperatorStr     = "new-operator"
+	KickOperatorStr    = "kick-operator"
 	MultiplayerModeStr = "multiplayer"
 
-	SessionsStr   = "sessions"
-	BackgroundStr = "background"
-	InfoStr       = "info"
-	UseStr        = "use"
+	SessionsStr     = "sessions"
+	BackgroundStr   = "background"
+	InfoStr         = "info"
+	UseStr          = "use"
+	ReconfigStr     = "reconfig"
+	PruneStr        = "prune"
+	TasksStr        = "tasks"
+	GenerateStr     = "generate"
+	RegenerateStr   = "regenerate"
+	CompilerInfoStr = "info"
+	StagerStr       = "stager"
+	ProfilesStr     = "profiles"
+	BeaconStr       = "beacon"
+	BeaconsStr      = "beacons"
+	WatchStr        = "watch"
+	SettingsStr     = "settings"
+	SearchStr       = "search"
 
-	GenerateStr        = "generate"
-	RegenerateStr      = "regenerate"
-	ProfileGenerateStr = "generate-profile"
-	GenerateEggStr     = "generate-egg"
-	ProfilesStr        = "profiles"
-	NewProfileStr      = "new-profile"
+	// Generic
 
-	ListSliverBuildsStr = "slivers"
-	ListCanariesStr     = "canaries"
+	// NewStr - "new"
+	NewStr     = "new"
+	AddStr     = "add"
+	StartStr   = "start"
+	StopStr    = "stop"
+	SetStr     = "set"
+	UnsetStr   = "unset"
+	SaveStr    = "save"
+	ReloadStr  = "reload"
+	LoadStr    = "load"
+	TablesStr  = "tables"
+	DetailsStr = "details"
 
-	JobsStr  = "jobs"
-	MtlsStr  = "mtls"
-	DnsStr   = "dns"
-	HttpStr  = "http"
-	HttpsStr = "https"
+	LootStr       = "loot"
+	LootLocalStr  = "local"
+	LootRemoteStr = "remote"
+	FetchStr      = "fetch"
+	LootCredsStr  = "creds"
+
+	RenameStr = "rename"
+
+	ImplantBuildsStr = "implants"
+	CanariesStr      = "canaries"
+
+	JobsStr        = "jobs"
+	MtlsStr        = "mtls"
+	WGStr          = "wg"
+	DnsStr         = "dns"
+	HttpStr        = "http"
+	HttpsStr       = "https"
+	NamedPipeStr   = "named-pipe"
+	TCPListenerStr = "tcp"
 
 	MsfStr       = "msf"
 	MsfInjectStr = "msf-inject"
 
-	PsStr   = "ps"
-	PingStr = "ping"
-	KillStr = "kill"
+	PsStr        = "ps"
+	PingStr      = "ping"
+	KillStr      = "kill"
+	TerminateStr = "terminate"
 
 	GetPIDStr = "getpid"
 	GetUIDStr = "getuid"
@@ -100,20 +175,74 @@ const (
 	DownloadStr = "download"
 	UploadStr   = "upload"
 	IfconfigStr = "ifconfig"
+	NetstatStr  = "netstat"
 
 	ProcdumpStr         = "procdump"
 	ImpersonateStr      = "impersonate"
+	RunAsStr            = "runas"
 	ElevateStr          = "elevate"
 	GetSystemStr        = "getsystem"
+	RevToSelfStr        = "rev2self"
 	ExecuteAssemblyStr  = "execute-assembly"
 	ExecuteShellcodeStr = "execute-shellcode"
 	MigrateStr          = "migrate"
+	SideloadStr         = "sideload"
+	SpawnDllStr         = "spawndll"
+	ExtensionsStr       = "extensions"
+	InstallStr          = "install"
+	ListStr             = "list"
+	ArmoryStr           = "armory"
+	AliasesStr          = "aliases"
+	StageListenerStr    = "stage-listener"
 
-	WebsitesStr = "websites"
+	WebsitesStr       = "websites"
+	RmWebContentStr   = "rm-content"
+	AddWebContentStr  = "add-content"
+	WebContentTypeStr = "content-type"
 
-	// Groups
+	ScreenshotStr         = "screenshot"
+	PsExecStr             = "psexec"
+	BackdoorStr           = "backdoor"
+	MakeTokenStr          = "make-token"
+	EnvStr                = "env"
+	RegistryStr           = "registry"
+	RegistryReadStr       = "read"
+	RegistryWriteStr      = "write"
+	RegistryListSubStr    = "list-subkeys"
+	RegistryListValuesStr = "list-values"
+	RegistryCreateKeyStr  = "create"
+	RegistryDeleteKeyStr  = "delete"
+	PivotsStr             = "pivots"
+	WgConfigStr           = "wg-config"
+	WgSocksStr            = "wg-socks"
+	WgPortFwdStr          = "wg-portfwd"
+	MonitorStr            = "monitor"
+	SSHStr                = "ssh"
+	DLLHijackStr          = "dllhijack"
+	InteractiveStr        = "interactive"
+	CloseStr              = "close"
+
+	PortfwdStr = "portfwd"
+	Socks5Str  = "socks5"
+
+	ReactionStr = "reaction"
+
+	HostsStr = "hosts"
+	IOCStr   = "ioc"
+
+	LicensesStr = "licenses"
+
+	GetPrivsStr        = "getprivs"
+	PreludeOperatorStr = "prelude-operator"
+	ConnectStr         = "connect"
+)
+
+// Groups
+const (
 	GenericHelpGroup     = "Generic:"
 	SliverHelpGroup      = "Sliver:"
 	SliverWinHelpGroup   = "Sliver - Windows:"
 	MultiplayerHelpGroup = "Multiplayer:"
+	AliasHelpGroup       = "Sliver - 3rd Party macros:"
+	ExtensionHelpGroup   = "Sliver - 3rd Party extensions:"
 )
